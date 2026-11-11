@@ -110,9 +110,21 @@ robust MIDI path; if you do not need USB configuration, the simpler
 `reactor-footswitch` sketch (hardware UART MIDI, fixed functions) is
 the alternative.
 
-## Configurator
+## NanoStep Companion (configurator)
 
-`config/configure.py` (needs `pip install pyserial`).
+The configurator app lives in `companion/`. It comes in two forms
+that share the same protocol and the same config files, so use
+whichever you prefer:
+
+- **GUI:** `companion/configure_gui.py` (needs `pip install pyserial`).
+  A simple graphical app: pick the serial port from a dropdown, edit
+  every button, combo and the expression pedal in a form, and watch a
+  status message log at the bottom, FileZilla style. Works on Linux,
+  Windows and macOS, Tkinter ships with Python on all three.
+  Run it with `python configure_gui.py`.
+- **CLI:** `companion/configure.py` (needs `pip install pyserial`).
+  Same thing from the command line, for scripting or when you just
+  want commands.
 
 ```
 python configure.py --list
@@ -127,7 +139,7 @@ one command per line. You can also talk to it by hand from the Arduino
 Serial Monitor. Send `HELP` for the command list. The protocol is
 documented in the header comment of the sketch.
 
-Config JSON format: see `config/example-config.json`. Action types are
+Config JSON format: see `companion/example-config.json`. Action types are
 `PC`, `CC`, and `NONE`. CC actions have a mode: `TRIG` (send the value
 every time, for bank/tuner/tap tempo) or `TOG` (alternate value / 0 on
 each press, for effect on/off).
@@ -156,7 +168,7 @@ The Flextone II (2000) has a standard 5-pin DIN MIDI In/Out, and
 Line 6 published the full MIDI spec ("Flextone II Midi / Sysex
 Specification and Notes", 2000-04-03). So the same hardware drives it,
 just with a different config. Load
-`config/example-config-flextone-ii.json` with the configurator and the
+`companion/example-config-flextone-ii.json` with the configurator and the
 pedal becomes a Flextone II controller. No tap tempo on this amp (the
 delay time is set by CC 30/62 coarse/fine), so the 1+2 combo is off in
 that config.
