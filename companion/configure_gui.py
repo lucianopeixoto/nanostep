@@ -16,8 +16,11 @@ Layout, FileZilla style: a connection bar on top (serial port
 dropdown, connect/disconnect), the config editor in the middle, action
 buttons, and a status message log at the bottom.
 
-Serial work runs in a background thread so the window stays
-responsive; log lines and results come back through a queue.
+The editor is responsive: the buttons use two columns, and the whole
+middle area scrolls vertically, so the window stays usable on
+low-resolution screens. Serial work runs in a background thread so
+the window stays responsive; log lines and results come back through
+a queue.
 """
 
 import json
@@ -73,7 +76,7 @@ def list_port_devices():
 # ---------------------------------------------------------------------------
 
 class ActionEditor:
-    """Four widgets for one action, with type-driven enable/disable."""
+    """Four compact widgets for one action, with type-driven enable/disable."""
 
     def __init__(self, parent, row, col):
         self.type_var = tk.StringVar(value="NONE")
@@ -85,19 +88,21 @@ class ActionEditor:
             parent, self.type_var, "NONE", "PC", "CC", "NONE",
             command=lambda _v: self._sync(),
         )
+        self.type_menu.config(width=5)
         self.number_spin = ttk.Spinbox(
-            parent, from_=0, to=127, width=4, textvariable=self.number_var
+            parent, from_=0, to=127, width=3, textvariable=self.number_var
         )
         self.value_spin = ttk.Spinbox(
-            parent, from_=0, to=127, width=4, textvariable=self.value_var
+            parent, from_=0, to=127, width=3, textvariable=self.value_var
         )
         self.mode_menu = ttk.OptionMenu(
             parent, self.mode_var, "TRIG", "TRIG", "TOG"
         )
-        self.type_menu.grid(row=row, column=col, padx=2, pady=1, sticky="w")
-        self.number_spin.grid(row=row, column=col + 1, padx=2, pady=1)
-        self.value_spin.grid(row=row, column=col + 2, padx=2, pady=1)
-        self.mode_menu.grid(row=row, column=col + 3, padx=2, pady=1, sticky="w")
+        self.mode_menu.config(width=5)
+        self.type_menu.grid(row=row, column=col, padx=1, pady=1, sticky="w")
+        self.number_spin.grid(row=row, column=col + 1, padx=1, pady=1)
+        self.value_spin.grid(row=row, column=col + 2, padx=1, pady=1)
+        self.mode_menu.grid(row=row, column=col + 3, padx=1, pady=1, sticky="w")
         self._sync()
 
     def _sync(self):
@@ -145,7 +150,7 @@ class CompanionApp:
     def __init__(self, root):
         self.root = root
         self.root.title("NanoStep Companion")
-        self.root.minsize(860, 720)
+        self.root.minsize(780, 560)
 
         self.pedal = None
         self.busy = False
@@ -153,11 +158,12 @@ class CompanionApp:
         self.root.after(100, self._poll_queue)
 
         self._build_connection_bar()
-        self._build_globals()
-        self._build_expression()
-        self._build_buttons()
-        self._build_combos()
-        self._build_actions()
+        self._build_scroll_area()
+        self._build_globals(self.scroll_frame)
+        self._build_expression(self.scroll_frame)
+        self._build_buttons(self.scroll_frame)
+        self._build_combos(self.scroll_frame)
+        self._build_actions(self.scroll_frame)
         self._build_log()
 
         self.refresh_ports()
@@ -181,9 +187,45 @@ class CompanionApp:
         self.status_label = ttk.Label(bar, textvariable=self.status_var, foreground="red")
         self.status_label.grid(row=0, column=4, padx=10, pady=4, sticky="w")
 
-    def _build_globals(self):
-        frame = ttk.LabelFrame(self.root, text="Globals")
-        frame.pack(fill="x", padx=8, pady=4)
+    def _build_scroll_area(self):
+        """Scrollable middle area so the window works on low-res screens."""
+        container = ttk.Frame(self.root)
+        container.pack(fill="both", expand=True, padx=8, pady=0)
+
+        self.canvas = tk.Canvas(container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        self.scroll_frame = ttk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        self.scroll_frame.bind(
+            "<Configure>",
+            lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+        )
+        self.canvas.bind(
+            "<Configure>",
+            lambda e: self.canvas.itemconfig(
+                self.canvas.find_withtag("all")[0], width=e.width
+            ) if self.canvas.find_withtag("all") else None,
+        )
+
+        def on_wheel(event):
+            if event.num == 4:
+                self.canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                self.canvas.yview_scroll(1, "units")
+            else:
+                self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        self.canvas.bind_all("<MouseWheel>", on_wheel)
+        self.canvas.bind_all("<Button-4>", on_wheel)
+        self.canvas.bind_all("<Button-5>", on_wheel)
+
+    def _build_globals(self, parent):
+        frame = ttk.LabelFrame(parent, text="Globals")
+        frame.pack(fill="x", pady=4)
         ttk.Label(frame, text="MIDI channel:").grid(row=0, column=0, padx=4, pady=4)
         self.channel_var = tk.IntVar(value=1)
         ttk.Spinbox(frame, from_=1, to=16, width=4, textvariable=self.channel_var).grid(
@@ -200,9 +242,9 @@ class CompanionApp:
             row=0, column=5, padx=4, pady=4
         )
 
-    def _build_expression(self):
-        frame = ttk.LabelFrame(self.root, text="Expression pedal")
-        frame.pack(fill="x", padx=8, pady=4)
+    def _build_expression(self, parent):
+        frame = ttk.LabelFrame(parent, text="Expression pedal")
+        frame.pack(fill="x", pady=4)
         ttk.Label(frame, text="CC:").grid(row=0, column=0, padx=4, pady=4)
         self.exp_cc_var = tk.IntVar(value=30)
         ttk.Spinbox(frame, from_=0, to=127, width=4, textvariable=self.exp_cc_var).grid(
@@ -218,50 +260,73 @@ class CompanionApp:
             row=0, column=4, padx=4, pady=4
         )
 
-    def _build_buttons(self):
-        frame = ttk.LabelFrame(self.root, text="Buttons (short press / long press)")
-        frame.pack(fill="x", padx=8, pady=4)
+    def _build_button_row(self, parent, row, number):
+        """One button row: label + short editor + long editor."""
+        ttk.Label(parent, text=f"Button {number}").grid(
+            row=row, column=0, padx=4, pady=1, sticky="e"
+        )
+        short = ActionEditor(parent, row, 1)
+        ttk.Label(parent, text="").grid(row=row, column=5, padx=2)
+        long_ed = ActionEditor(parent, row, 6)
+        return short, long_ed
+
+    def _build_button_column(self, parent, numbers):
+        """A column of button rows with a shared header."""
         headers = ["", "Short: type", "num", "val", "mode", "", "Long: type", "num", "val", "mode"]
         for col, text in enumerate(headers):
-            ttk.Label(frame, text=text).grid(row=0, column=col, padx=2, pady=2)
-        self.button_editors = []
-        for i in range(10):
-            ttk.Label(frame, text=f"Button {i + 1}").grid(
-                row=i + 1, column=0, padx=4, pady=1, sticky="e"
-            )
-            short = ActionEditor(frame, i + 1, 1)
-            ttk.Label(frame, text="").grid(row=i + 1, column=5, padx=2)
-            long_ed = ActionEditor(frame, i + 1, 6)
-            self.button_editors.append((short, long_ed))
+            ttk.Label(parent, text=text).grid(row=0, column=col, padx=1, pady=2)
+        editors = []
+        for i, number in enumerate(numbers):
+            editors.append(self._build_button_row(parent, i + 1, number))
+        return editors
 
-    def _build_combos(self):
-        frame = ttk.LabelFrame(self.root, text="Button combinations")
-        frame.pack(fill="x", padx=8, pady=4)
-        self.combo_editors = []
-        for slot in range(4):
-            ttk.Label(frame, text=f"Combo {slot + 1}").grid(
-                row=slot, column=0, padx=4, pady=2, sticky="e"
-            )
-            enabled_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(frame, text="On", variable=enabled_var).grid(
-                row=slot, column=1, padx=2, pady=2
-            )
-            ttk.Label(frame, text="A:").grid(row=slot, column=2, padx=2, pady=2)
-            a_var = tk.IntVar(value=0)
-            ttk.Spinbox(frame, from_=0, to=9, width=3, textvariable=a_var).grid(
-                row=slot, column=3, padx=2, pady=2
-            )
-            ttk.Label(frame, text="B:").grid(row=slot, column=4, padx=2, pady=2)
-            b_var = tk.IntVar(value=1)
-            ttk.Spinbox(frame, from_=0, to=9, width=3, textvariable=b_var).grid(
-                row=slot, column=5, padx=2, pady=2
-            )
-            action = ActionEditor(frame, slot, 6)
-            self.combo_editors.append((enabled_var, a_var, b_var, action))
+    def _build_buttons(self, parent):
+        frame = ttk.LabelFrame(parent, text="Buttons (short press / long press)")
+        frame.pack(fill="x", pady=4)
+        left = ttk.Frame(frame)
+        left.pack(side="left", padx=4, pady=2)
+        right = ttk.Frame(frame)
+        right.pack(side="left", padx=4, pady=2)
+        editors_left = self._build_button_column(left, [1, 2, 3, 4, 5])
+        editors_right = self._build_button_column(right, [6, 7, 8, 9, 10])
+        self.button_editors = editors_left + editors_right
 
-    def _build_actions(self):
-        frame = ttk.Frame(self.root)
-        frame.pack(fill="x", padx=8, pady=4)
+    def _build_combo(self, parent, row, slot):
+        """One combo row: enable + buttons A/B + action editor."""
+        ttk.Label(parent, text=f"Combo {slot + 1}").grid(
+            row=row, column=0, padx=4, pady=2, sticky="e"
+        )
+        enabled_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(parent, text="On", variable=enabled_var).grid(
+            row=row, column=1, padx=2, pady=2
+        )
+        ttk.Label(parent, text="A:").grid(row=row, column=2, padx=2, pady=2)
+        a_var = tk.IntVar(value=0)
+        ttk.Spinbox(parent, from_=0, to=9, width=3, textvariable=a_var).grid(
+            row=row, column=3, padx=2, pady=2
+        )
+        ttk.Label(parent, text="B:").grid(row=row, column=4, padx=2, pady=2)
+        b_var = tk.IntVar(value=1)
+        ttk.Spinbox(parent, from_=0, to=9, width=3, textvariable=b_var).grid(
+            row=row, column=5, padx=2, pady=2
+        )
+        action = ActionEditor(parent, row, 6)
+        return enabled_var, a_var, b_var, action
+
+    def _build_combos(self, parent):
+        frame = ttk.LabelFrame(parent, text="Button combinations")
+        frame.pack(fill="x", pady=4)
+        left = ttk.Frame(frame)
+        left.pack(side="left", padx=4, pady=2)
+        right = ttk.Frame(frame)
+        right.pack(side="left", padx=4, pady=2)
+        combos_left = [self._build_combo(left, i, i) for i in range(2)]
+        combos_right = [self._build_combo(right, i, i + 2) for i in range(2)]
+        self.combo_editors = combos_left + combos_right
+
+    def _build_actions(self, parent):
+        frame = ttk.Frame(parent)
+        frame.pack(fill="x", pady=4)
         self.read_btn = ttk.Button(frame, text="Read from pedal", command=self.read_config)
         self.read_btn.pack(side="left", padx=2)
         self.write_btn = ttk.Button(frame, text="Write to pedal", command=self.write_config)
